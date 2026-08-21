@@ -37,7 +37,7 @@ body{overflow:hidden} .app{height:100dvh;display:grid;grid-template-rows:auto au
 <div class="app">
   <div class="top">
     <div>
-      <div class="title">座標進捗マップ</div>
+      <div><div class="title">座標進捗マップ</div><div style="font-size:10px;color:#9ca3af;margin-top:2px">PC：ホイールで拡大縮小 / スマホ：ピンチ操作</div></div>
       <span id="syncBadge" class="badge offline">未接続</span>
     </div>
     <div class="stats" id="stats">読み込み中</div>
@@ -136,6 +136,23 @@ wrap.addEventListener("pointerdown",e=>{
 wrap.addEventListener("pointermove",e=>{if(!drag||drag.id!==e.pointerId)return;let r=map.getBoundingClientRect();tx=drag.tx+(e.clientX-drag.x)/r.width*1000;ty=drag.ty+(e.clientY-drag.y)/r.height*1000;transform()});
 wrap.addEventListener("pointerup",()=>drag=null);wrap.addEventListener("pointercancel",()=>drag=null);
 document.getElementById("zin").onclick=()=>zoom(1.35);document.getElementById("zout").onclick=()=>zoom(.75);document.getElementById("home").onclick=()=>{scale=1;tx=0;ty=0;transform()};
+
+map.addEventListener("wheel",e=>{
+  e.preventDefault();
+  const r=map.getBoundingClientRect();
+  const sx=(e.clientX-r.left)/r.width*1000;
+  const sy=(e.clientY-r.top)/r.height*1000;
+  zoom(e.deltaY<0?1.2:0.84,sx,sy);
+},{passive:false});
+
+map.addEventListener("dblclick",e=>{
+  e.preventDefault();
+  const r=map.getBoundingClientRect();
+  const sx=(e.clientX-r.left)/r.width*1000;
+  const sy=(e.clientY-r.top)/r.height*1000;
+  zoom(1.5,sx,sy);
+});
+
 
 function findCoord(){let raw=document.getElementById("coord").value.trim(),m=raw.match(/(\d+)\D+(\d+)/);if(!m)return msg("例：214,247");let x=+m[1],y=+m[2],p=POINTS.find(q=>q.x===x&&q.y===y);if(!p)return msg("その座標はありません");levelFilter="all";statusFilter="all";refresh();scale=5;tx=500-x*scale;ty=500-y*scale;transform();let d=document.querySelector(`[data-id="${p.id}"] .dot`);d?.classList.add("focus");setTimeout(()=>d?.classList.remove("focus"),1600);let done=completed.get(p.id);msg(done?`完了済み：${done.completed_by}`:`Lv${p.level} X:${p.x} Y:${p.y}`)}
 document.getElementById("find").onclick=findCoord;document.getElementById("coord").onkeydown=e=>{if(e.key==="Enter")findCoord()};
