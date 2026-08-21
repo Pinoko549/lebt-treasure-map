@@ -212,58 +212,13 @@ document.getElementById("adminUndo").onclick=async()=>{
 
 document.getElementById("filters").onclick=e=>{let b=e.target.closest(".chip");if(!b)return;if(b.dataset.kind==="level")levelFilter=b.dataset.value;else statusFilter=statusFilter===b.dataset.value?"all":b.dataset.value;document.querySelectorAll('.chip[data-kind="level"]').forEach(x=>x.classList.toggle("active",x.dataset.value===levelFilter));document.querySelectorAll('.chip[data-kind="status"]').forEach(x=>x.classList.toggle("active",x.dataset.value===statusFilter));refresh()};
 
-const activePointers=new Map();
-let pinch=null;
-
 wrap.addEventListener("pointerdown",e=>{
-  activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
-  try{wrap.setPointerCapture(e.pointerId)}catch(_){}
-  if(activePointers.size===2){
-    const pts=[...activePointers.values()];
-    const dx=pts[1].x-pts[0].x,dy=pts[1].y-pts[0].y;
-    const r=map.getBoundingClientRect();
-    const midX=(pts[0].x+pts[1].x)/2,midY=(pts[0].y+pts[1].y)/2;
-    const screenX=(midX-r.left)/r.width*1000,screenY=(midY-r.top)/r.height*1000;
-    pinch={dist:Math.hypot(dx,dy),scale,tx,ty,
-      worldX:(screenX-tx)/scale,worldY:(screenY-ty)/scale};
-    drag=null;
-    return;
-  }
   if(e.target.closest && e.target.closest(".hit")) return;
+  wrap.setPointerCapture(e.pointerId);
   drag={id:e.pointerId,x:e.clientX,y:e.clientY,tx,ty};
 });
-
-wrap.addEventListener("pointermove",e=>{
-  if(!activePointers.has(e.pointerId))return;
-  activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
-  if(activePointers.size>=2&&pinch){
-    e.preventDefault();
-    const pts=[...activePointers.values()].slice(0,2);
-    const dx=pts[1].x-pts[0].x,dy=pts[1].y-pts[0].y;
-    const newDist=Math.hypot(dx,dy);
-    const r=map.getBoundingClientRect();
-    const midX=(pts[0].x+pts[1].x)/2,midY=(pts[0].y+pts[1].y)/2;
-    const screenX=(midX-r.left)/r.width*1000,screenY=(midY-r.top)/r.height*1000;
-    scale=Math.max(1,Math.min(8,pinch.scale*(newDist/pinch.dist)));
-    tx=screenX-pinch.worldX*scale;
-    ty=screenY-pinch.worldY*scale;
-    transform();
-    return;
-  }
-  if(!drag||drag.id!==e.pointerId)return;
-  const r=map.getBoundingClientRect();
-  tx=drag.tx+(e.clientX-drag.x)/r.width*1000;
-  ty=drag.ty+(e.clientY-drag.y)/r.height*1000;
-  transform();
-});
-
-function endPointer(e){
-  activePointers.delete(e.pointerId);
-  if(drag&&drag.id===e.pointerId)drag=null;
-  if(activePointers.size<2)pinch=null;
-}
-wrap.addEventListener("pointerup",endPointer);
-wrap.addEventListener("pointercancel",endPointer);
+wrap.addEventListener("pointermove",e=>{if(!drag||drag.id!==e.pointerId)return;let r=map.getBoundingClientRect();tx=drag.tx+(e.clientX-drag.x)/r.width*1000;ty=drag.ty+(e.clientY-drag.y)/r.height*1000;transform()});
+wrap.addEventListener("pointerup",()=>drag=null);wrap.addEventListener("pointercancel",()=>drag=null);
 document.getElementById("zin").onclick=()=>zoom(1.35);document.getElementById("zout").onclick=()=>zoom(.75);document.getElementById("home").onclick=()=>{scale=1;tx=0;ty=0;transform()};
 
 map.addEventListener("wheel",e=>{
