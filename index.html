@@ -28,7 +28,7 @@ body{overflow:hidden} .app{height:100dvh;display:grid;grid-template-rows:auto au
 .handle{width:42px;height:5px;border-radius:9px;background:#d1d5db;margin:0 auto 11px} .sheetTitle{font-size:20px;font-weight:800;margin-bottom:5px}
 .sheetSub{font-size:13px;color:var(--muted);margin-bottom:13px;line-height:1.5} .actions{display:grid;grid-template-columns:1fr 1.5fr;gap:7px}
 .toast{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);background:#111827;color:#fff;padding:8px 11px;border-radius:999px;font-size:12px;display:none;z-index:15;white-space:nowrap;max-width:90%;overflow:hidden;text-overflow:ellipsis}
-.badge{font-size:11px;padding:3px 7px;border-radius:999px;background:#ecfdf5;color:#047857} .offline{background:#fef2f2;color:#b91c1c}
+.badge{font-size:11px;padding:3px 7px;border-radius:999px;background:#ecfdf5;color:#047857}.adminBtn{margin-left:6px;border:1px solid #374151;background:#111827;color:#fff;border-radius:999px;padding:4px 8px;font-size:11px;cursor:pointer} .offline{background:#fef2f2;color:#b91c1c}
 .nameRow{display:flex;gap:7px} .nameRow input{flex:1} .meta{font-size:12px;color:var(--muted);margin-top:8px}
 @media(min-width:900px){.app{max-width:1100px;margin:auto;box-shadow:0 0 30px #0002}}
 </style>
@@ -38,7 +38,7 @@ body{overflow:hidden} .app{height:100dvh;display:grid;grid-template-rows:auto au
   <div class="top">
     <div>
       <div><div class="title">座標進捗マップ</div><div style="font-size:10px;color:#9ca3af;margin-top:2px">PC：ホイールで拡大縮小 / スマホ：ピンチ操作</div></div>
-      <span id="syncBadge" class="badge offline">未接続</span>
+      <span id="syncBadge" class="badge offline">未接続</span><button id="adminOpen" class="adminBtn">管理者</button><button id="adminLogout" class="adminBtn" style="display:none">管理者ログアウト</button>
     </div>
     <div class="stats" id="stats">読み込み中</div>
   </div>
@@ -63,7 +63,7 @@ body{overflow:hidden} .app{height:100dvh;display:grid;grid-template-rows:auto au
 
 <div class="sheetBg" id="sheetBg"><div class="sheet">
   <div class="handle"></div><div class="sheetTitle" id="sheetTitle"></div><div class="sheetSub" id="sheetSub"></div>
-  <div class="actions"><button class="btn" id="cancel">閉じる</button><button class="btn primary" id="complete">この座標を完了</button></div>
+  <div class="actions"><button class="btn" id="cancel">閉じる</button><button class="btn primary" id="complete">この座標を完了</button></div><button class="btn" id="adminUndo" style="display:none;width:100%;margin-top:8px;color:#b91c1c;border-color:#fecaca;background:#fff">管理者：未完了に戻す</button>
 </div></div>
 
 <div class="nameBg" id="nameBg"><div class="sheet">
@@ -71,6 +71,16 @@ body{overflow:hidden} .app{height:100dvh;display:grid;grid-template-rows:auto au
   <div class="sheetSub">誰が完了したか分かるよう、ゲーム内の名前などを入力してください。この端末に保存されます。</div>
   <div class="nameRow"><input id="nameInput" maxlength="40" placeholder="例：ぴのこ"><button class="btn primary" id="saveName">保存</button></div>
   <div class="meta">個人情報ではなく、連盟内で識別できる名前の利用がおすすめです。</div>
+</div></div>
+
+
+<div class="nameBg" id="adminBg"><div class="sheet">
+  <div class="handle"></div><div class="sheetTitle">管理者ログイン</div>
+  <div class="sheetSub">管理者だけが、誤って完了された座標を未完了に戻せます。</div>
+  <div class="nameRow"><input id="adminEmail" type="email" autocomplete="username" placeholder="管理者メールアドレス"></div>
+  <div class="nameRow" style="margin-top:8px"><input id="adminPassword" type="password" autocomplete="current-password" placeholder="パスワード"></div>
+  <div class="actions" style="margin-top:10px"><button class="btn" id="adminCancel">閉じる</button><button class="btn primary" id="adminLogin">ログイン</button></div>
+  <div class="meta" id="adminStatus"></div>
 </div></div>
 
 <script type="module">
@@ -83,19 +93,35 @@ const POINTS=[{"id":"L1-68-90","level":1,"color":"#FF0000","x":68,"y":90},{"id":
 const completed=new Map();
 let myName=localStorage.getItem("coord-map-name")||"";
 let selected=null,levelFilter="all",statusFilter="all";
+let isAdmin=false;
 let scale=1,tx=0,ty=0,drag=null;
 
 const viewport=document.getElementById("viewport"),map=document.getElementById("map"),wrap=document.getElementById("wrap");
 const stats=document.getElementById("stats"),toast=document.getElementById("toast"),badge=document.getElementById("syncBadge");
-const sheetBg=document.getElementById("sheetBg"),nameBg=document.getElementById("nameBg");
+const sheetBg=document.getElementById("sheetBg"),nameBg=document.getElementById("nameBg"),adminBg=document.getElementById("adminBg");
 
 function E(n,a={}){const x=document.createElementNS("http://www.w3.org/2000/svg",n);for(const[k,v]of Object.entries(a))x.setAttribute(k,v);return x}
 function msg(t){toast.textContent=t;toast.style.display="block";clearTimeout(msg.t);msg.t=setTimeout(()=>toast.style.display="none",1900)}
 function grid(){for(let i=0;i<=1000;i+=100){viewport.appendChild(E("line",{x1:i,y1:0,x2:i,y2:1000,class:"grid"}));viewport.appendChild(E("line",{x1:0,y1:i,x2:1000,y2:i,class:"grid"}));if(i<1000){let a=E("text",{x:i+6,y:22,class:"axis"});a.textContent=i;viewport.appendChild(a);let b=E("text",{x:6,y:i+22,class:"axis"});b.textContent=i;viewport.appendChild(b)}}}
 function dots(){for(const p of POINTS){let g=E("g",{"data-id":p.id,"data-level":p.level}),d=E("circle",{cx:p.x,cy:p.y,r:7,fill:p.color,class:"dot"}),h=E("circle",{cx:p.x,cy:p.y,r:16,class:"hit"});h.addEventListener("pointerdown",e=>e.stopPropagation());
-h.addEventListener("click",e=>{e.stopPropagation();const done=completed.get(p.id);if(done){msg(`完了済み：${done.completed_by}`);return} openSheet(p)});g.append(d,h);viewport.appendChild(g)}}
+h.addEventListener("click",e=>{
+  e.stopPropagation();
+  const done=completed.get(p.id);
+  if(done && !isAdmin){msg(`完了済み：${done.completed_by}`);return}
+  openSheet(p)
+});g.append(d,h);viewport.appendChild(g)}}
 function refresh(){let done=completed.size,open=POINTS.length-done;document.querySelectorAll("#viewport>g[data-id]").forEach(g=>{let isDone=completed.has(g.dataset.id);g.querySelector(".dot").classList.toggle("done",isDone);let l=levelFilter==="all"||g.dataset.level===levelFilter;let s=statusFilter==="all"||(statusFilter==="done"&&isDone)||(statusFilter==="open"&&!isDone);g.style.display=l&&s?"":"none"});stats.textContent=`未完了 ${open} ｜ 完了 ${done} ｜ 全 ${POINTS.length}`}
-function openSheet(p){selected=p;const done=completed.get(p.id);document.getElementById("sheetTitle").textContent=`Lv${p.level}　X:${p.x} Y:${p.y}`;document.getElementById("sheetSub").textContent=done?`完了：${done.completed_by}`:"この座標を完了にすると、全員の画面でグレー表示になります。";document.getElementById("complete").style.display=done?"none":"";sheetBg.style.display="flex"}
+function openSheet(p){
+  selected=p;
+  const done=completed.get(p.id);
+  document.getElementById("sheetTitle").textContent=`Lv${p.level}　X:${p.x} Y:${p.y}`;
+  document.getElementById("sheetSub").textContent=done
+    ? `完了：${done.completed_by}${done.completed_at ? " / " + new Date(done.completed_at).toLocaleString("ja-JP") : ""}`
+    : "この座標を完了にすると、全員の画面でグレー表示になります。";
+  document.getElementById("complete").style.display=done?"none":"";
+  document.getElementById("adminUndo").style.display=(done&&isAdmin)?"block":"none";
+  sheetBg.style.display="flex";
+}
 function closeSheet(){selected=null;sheetBg.style.display="none"}
 function transform(){scale=Math.max(1,Math.min(8,scale));tx=Math.min(0,Math.max(1000-1000*scale,tx));ty=Math.min(0,Math.max(1000-1000*scale,ty));viewport.setAttribute("transform",`translate(${tx} ${ty}) scale(${scale})`)}
 function zoom(f,cx=500,cy=500){let old=scale,ns=Math.max(1,Math.min(8,scale*f)),r=ns/old;tx=cx-(cx-tx)*r;ty=cy-(cy-ty)*r;scale=ns;transform()}
@@ -108,8 +134,22 @@ if(configured){
   const {data,error}=await supabase.from("coordinate_progress").select("*");
   if(error){badge.textContent="接続エラー";msg(error.message)}else{for(const r of data)completed.set(r.coord_id,r);badge.textContent="共有中";badge.classList.remove("offline");refresh()}
   supabase.channel("progress-live")
-    .on("postgres_changes",{event:"INSERT",schema:"public",table:"coordinate_progress"},payload=>{completed.set(payload.new.coord_id,payload.new);refresh();msg(`${payload.new.completed_by}さんが1件完了`)})
+    .on("postgres_changes",{event:"INSERT",schema:"public",table:"coordinate_progress"},payload=>{
+      completed.set(payload.new.coord_id,payload.new);refresh();msg(`${payload.new.completed_by}さんが1件完了`)
+    })
+    .on("postgres_changes",{event:"DELETE",schema:"public",table:"coordinate_progress"},payload=>{
+      if(payload.old?.coord_id) completed.delete(payload.old.coord_id);
+      refresh();msg("管理者が1件を未完了に戻しました")
+    })
     .subscribe();
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  isAdmin = !!sessionData?.session;
+  updateAdminUI();
+  supabase.auth.onAuthStateChange((_event, session)=>{
+    isAdmin=!!session;
+    updateAdminUI();
+  });
 }else{badge.textContent="設定待ち";msg("Supabase設定を入れると共有版になります")}
 
 document.getElementById("complete").onclick=async()=>{
@@ -125,6 +165,50 @@ document.getElementById("cancel").onclick=closeSheet;sheetBg.onclick=e=>{if(e.ta
 document.getElementById("saveName").onclick=()=>{let v=document.getElementById("nameInput").value.trim();if(!v)return msg("名前を入力してください");myName=v;localStorage.setItem("coord-map-name",v);nameBg.style.display="none";msg(`表示名：${v}`)};
 document.getElementById("rename").onclick=()=>{document.getElementById("nameInput").value=myName;nameBg.style.display="flex"};
 if(!myName)setTimeout(()=>nameBg.style.display="flex",300);
+
+
+function updateAdminUI(){
+  document.getElementById("adminOpen").style.display=isAdmin?"none":"inline-block";
+  document.getElementById("adminLogout").style.display=isAdmin?"inline-block":"none";
+}
+
+document.getElementById("adminOpen").onclick=()=>{
+  document.getElementById("adminEmail").value="";
+  document.getElementById("adminPassword").value="";
+  document.getElementById("adminStatus").textContent="";
+  adminBg.style.display="flex";
+};
+document.getElementById("adminCancel").onclick=()=>adminBg.style.display="none";
+adminBg.addEventListener("click",e=>{if(e.target===adminBg)adminBg.style.display="none"});
+
+document.getElementById("adminLogin").onclick=async()=>{
+  if(!configured) return msg("Supabase設定が必要です");
+  const email=document.getElementById("adminEmail").value.trim();
+  const password=document.getElementById("adminPassword").value;
+  if(!email||!password){document.getElementById("adminStatus").textContent="メールアドレスとパスワードを入力してください";return}
+  document.getElementById("adminStatus").textContent="ログイン中...";
+  const {error}=await supabase.auth.signInWithPassword({email,password});
+  if(error){document.getElementById("adminStatus").textContent="ログインできませんでした";return}
+  adminBg.style.display="none";
+  msg("管理者モードになりました");
+};
+
+document.getElementById("adminLogout").onclick=async()=>{
+  if(supabase) await supabase.auth.signOut();
+  msg("管理者モードを終了しました");
+};
+
+document.getElementById("adminUndo").onclick=async()=>{
+  if(!selected||!isAdmin) return;
+  const p=selected;
+  if(!confirm(`Lv${p.level} X:${p.x} Y:${p.y} を未完了に戻しますか？`)) return;
+  const {error}=await supabase.from("coordinate_progress").delete().eq("coord_id",p.id);
+  if(error){msg("戻せませんでした："+error.message);return}
+  completed.delete(p.id);
+  refresh();
+  closeSheet();
+  msg("未完了に戻しました");
+};
 
 document.getElementById("filters").onclick=e=>{let b=e.target.closest(".chip");if(!b)return;if(b.dataset.kind==="level")levelFilter=b.dataset.value;else statusFilter=statusFilter===b.dataset.value?"all":b.dataset.value;document.querySelectorAll('.chip[data-kind="level"]').forEach(x=>x.classList.toggle("active",x.dataset.value===levelFilter));document.querySelectorAll('.chip[data-kind="status"]').forEach(x=>x.classList.toggle("active",x.dataset.value===statusFilter));refresh()};
 
