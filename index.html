@@ -37,7 +37,7 @@ body{overflow:hidden} .app{height:100dvh;display:grid;grid-template-rows:auto au
 <div class="app">
   <div class="top">
     <div>
-      <div><div class="title">座標進捗マップ</div><div style="font-size:10px;color:#9ca3af;margin-top:2px">PC：ホイールで拡大縮小 / スマホ：ピンチ操作</div></div>
+      <div><div class="title">座標進捗マップ</div><div style="font-size:10px;color:#9ca3af;margin-top:2px">PC：ホイールで拡大縮小 / スマホ：2本指ピンチ</div></div>
       <span id="syncBadge" class="badge offline">未接続</span><button id="adminOpen" class="adminBtn">管理者</button><button id="adminLogout" class="adminBtn" style="display:none">管理者ログアウト</button>
     </div>
     <div class="stats" id="stats">読み込み中</div>
@@ -213,12 +213,121 @@ document.getElementById("adminUndo").onclick=async()=>{
 document.getElementById("filters").onclick=e=>{let b=e.target.closest(".chip");if(!b)return;if(b.dataset.kind==="level")levelFilter=b.dataset.value;else statusFilter=statusFilter===b.dataset.value?"all":b.dataset.value;document.querySelectorAll('.chip[data-kind="level"]').forEach(x=>x.classList.toggle("active",x.dataset.value===levelFilter));document.querySelectorAll('.chip[data-kind="status"]').forEach(x=>x.classList.toggle("active",x.dataset.value===statusFilter));refresh()};
 
 wrap.addEventListener("pointerdown",e=>{
+  if(e.pointerType==="touch") return;
   if(e.target.closest && e.target.closest(".hit")) return;
   wrap.setPointerCapture(e.pointerId);
   drag={id:e.pointerId,x:e.clientX,y:e.clientY,tx,ty};
 });
-wrap.addEventListener("pointermove",e=>{if(!drag||drag.id!==e.pointerId)return;let r=map.getBoundingClientRect();tx=drag.tx+(e.clientX-drag.x)/r.width*1000;ty=drag.ty+(e.clientY-drag.y)/r.height*1000;transform()});
-wrap.addEventListener("pointerup",()=>drag=null);wrap.addEventListener("pointercancel",()=>drag=null);
+wrap.addEventListener("pointermove",e=>{
+  if(e.pointerType==="touch") return;
+  if(!drag||drag.id!==e.pointerId)return;
+  const r=map.getBoundingClientRect();
+  tx=drag.tx+(e.clientX-drag.x)/r.width*1000;
+  ty=drag.ty+(e.clientY-drag.y)/r.height*1000;
+  transform();
+});
+wrap.addEventListener("pointerup",e=>{if(e.pointerType!=="touch")drag=null});
+wrap.addEventListener("pointercancel",e=>{if(e.pointerType!=="touch")drag=null});
+
+/* Mobile touch gestures: one-finger pan + stable two-finger pinch zoom */
+let touchMode=null;
+let touchPan=null;
+let touchPinch=null;
+
+function touchPoint(t){ return {x:t.clientX,y:t.clientY}; }
+function touchDist(a,b){ return Math.hypot(b.x-a.x,b.y-a.y); }
+function touchMid(a,b){ return {x:(a.x+b.x)/2,y:(a.y+b.y)/2}; }
+
+wrap.addEventListener("touchstart",e=>{
+  if(e.touches.length===2){
+    e.preventDefault();
+    const a=touchPoint(e.touches[0]), b=touchPoint(e.touches[1]);
+    const mid=touchMid(a,b), r=map.getBoundingClientRect();
+    const sx=(mid.x-r.left)/r.width*1000;
+    const sy=(mid.y-r.top)/r.height*1000;
+    touchMode="pinch";
+    touchPan=null;
+    touchPinch={
+      startDist:Math.max(1,touchDist(a,b)),
+      startScale:scale,
+      worldX:(sx-tx)/scale,
+      worldY:(sy-ty)/scale
+    };
+    return;
+  }
+
+  if(e.touches.length===1){
+    const target=e.target;
+    if(target && target.closest && target.closest(".hit")){
+      touchMode=null; touchPan=null; touchPinch=null;
+      return;
+    }
+    const p=touchPoint(e.touches[0]);
+    touchMode="pan";
+    touchPinch=null;
+    touchPan={x:p.x,y:p.y,tx,ty};
+  }
+},{passive:false});
+
+wrap.addEventListener("touchmove",e=>{
+  if(e.touches.length===2){
+    e.preventDefault();
+    const a=touchPoint(e.touches[0]), b=touchPoint(e.touches[1]);
+    const mid=touchMid(a,b), r=map.getBoundingClientRect();
+
+    if(touchMode!=="pinch" || !touchPinch){
+      const sx=(mid.x-r.left)/r.width*1000;
+      const sy=(mid.y-r.top)/r.height*1000;
+      touchMode="pinch";
+      touchPan=null;
+      touchPinch={
+        startDist:Math.max(1,touchDist(a,b)),
+        startScale:scale,
+        worldX:(sx-tx)/scale,
+        worldY:(sy-ty)/scale
+      };
+    }
+
+    const ratio=touchDist(a,b)/touchPinch.startDist;
+    const nextScale=Math.max(1,Math.min(8,touchPinch.startScale*ratio));
+    const sx=(mid.x-r.left)/r.width*1000;
+    const sy=(mid.y-r.top)/r.height*1000;
+
+    scale=nextScale;
+    tx=sx-touchPinch.worldX*scale;
+    ty=sy-touchPinch.worldY*scale;
+    transform();
+    return;
+  }
+
+  if(e.touches.length===1 && touchMode==="pan" && touchPan){
+    e.preventDefault();
+    const p=touchPoint(e.touches[0]), r=map.getBoundingClientRect();
+    tx=touchPan.tx+(p.x-touchPan.x)/r.width*1000;
+    ty=touchPan.ty+(p.y-touchPan.y)/r.height*1000;
+    transform();
+  }
+},{passive:false});
+
+wrap.addEventListener("touchend",e=>{
+  if(e.touches.length===1){
+    // If one finger remains after a pinch, smoothly switch to pan.
+    const p=touchPoint(e.touches[0]);
+    touchMode="pan";
+    touchPinch=null;
+    touchPan={x:p.x,y:p.y,tx,ty};
+  }else{
+    touchMode=null;
+    touchPan=null;
+    touchPinch=null;
+  }
+},{passive:false});
+
+wrap.addEventListener("touchcancel",()=>{
+  touchMode=null;
+  touchPan=null;
+  touchPinch=null;
+},{passive:false});
 document.getElementById("zin").onclick=()=>zoom(1.35);document.getElementById("zout").onclick=()=>zoom(.75);document.getElementById("home").onclick=()=>{scale=1;tx=0;ty=0;transform()};
 
 map.addEventListener("wheel",e=>{
